@@ -1,0 +1,154 @@
+---
+title: "Practical Machine Learning - Final Assignment"
+author: "Allwyn Joseph"
+date: "5/21/2017"
+
+output: md_document
+---
+## Executive Summary   
+With the advent devices such as Jawbone Up, Nike FuelBand, and Fitbit, an increasing number of fitness enthusiasts are beginning to track and monitor their activity levels, with very little bother regarding the quality of the same. This assignment seeks to better understand, quantify and predict the performance of a particular physical activity an individual engages in. The assignment begins with data extraction, storing, cleaning and separation. Soon after, various predictive models were formulated using the training data set. Further on, the accuracies of each of these methods were projected using the test set. From the models created, the one with the highest accuracy was chosen to predict how well were the activities performed for 20 different cases within the testing dataset.
+
+## Introduction 
+
+### Background 
+With devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively.These type of devices are part of the quantified self-movement – a group of enthusiasts who take measurements of themselves regularly to improve their health, to find patterns in their behaviour, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.n this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har 
+
+### Data 
+The data has been made available through the following links: <br>
+1. Training Data Set - https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv <br>
+2. Testing Data Set - https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The Weight Lifting Exercises dataset for this project was obtained from this source: http://groupware.les.inf.puc-rio.br/har. <br> The reference for the research paper from where the data was extracted is as follows, 
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+### Aim 
+The aim of the assignment is to design prediction models based on the available dataset to project the quality of barbell lifts performed by the participants. Once various prediction models are realised, the most accurate one is chosen to predict the quality of lifts by participants for 20 different cases. The results from the prediction are then utilised to answer a quiz in order to validate the prediction model 
+
+### Libraries
+The list of libraries that we will be taping into are as follows:
+```{r libraries, include=TRUE,message=FALSE}
+library(ggplot2)
+library(caret)
+library(kernlab)
+library(MASS)
+library(rpart)
+library(randomForest)
+```
+
+## Data Preparation 
+
+### Data Reading 
+Using the aforementioned links the data is read into the training and testing variables. 
+```{r reading, include=TRUE}
+training<- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", 
+                    header = TRUE, 
+                    sep = ",", 
+                    na.strings = c("NA","#DIV/0!",""))
+
+testing<- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", 
+                   header = TRUE, 
+                   sep = ",", 
+                   na.strings = c("NA","#DIV/0!",""))
+```
+
+### Data Separation 
+The training data set is now split into a cross validation set and a training set, also the testing set is further stored in the variable test. 
+```{r seperation, include=TRUE}
+inTrain <- createDataPartition(training$classe, p=0.7, list=FALSE)
+my_train<- training[inTrain, ]
+my_test<- training[-inTrain, ]
+test<- testing
+```
+
+### Data Cleaning and Tidying 
+The first part of data cleaning and tidying is the removal of near zero variance predictors from the data set. These are variables with a rather constant value and low influence on the outcome of the dataset
+```{r near_zero_variance, include=TRUE}
+near_zero_train<- nearZeroVar(training)
+near_zero_test<- nearZeroVar(testing)
+my_train<- my_train[,-near_zero_train]
+my_test<- my_test[,-near_zero_train]
+test<- test[,-near_zero_test]
+```
+
+Further on, variables with more than 80% of its data points assigned to NA is removed 
+```{r na_values, include=TRUE}
+my_train <- my_train[ lapply( my_train,function(x) sum(is.na(x)) / length(x) ) < 0.2 ]
+my_test <- my_test[ lapply( my_test,function(x) sum(is.na(x)) / length(x) ) < 0.2 ]
+test <- test[ lapply( test, function(x) sum(is.na(x)) / length(x) ) < 0.2 ]
+```
+
+Finally the identification variables are also removed 
+```{r identification, include=TRUE}
+my_train<- my_train[,-(1:5)]
+my_test<- my_test[,-(1:5)]
+test<- test[,-c(1:5)]
+```
+
+The final datasets now have the following dimensions 
+```{r dim, include=TRUE}
+dim(my_train)
+dim(my_test)
+dim(test)
+```
+Data cleaning and tidying have resulted in smaller datasets with the same number of predictors.  
+
+### Principal Component Analysis (PCA)
+Since we have more than 50 predictors, it would be wise to shrink the dataset a little further before we proceed with the prediction models. But, before we go ahead with PCA, we must verify if doing so would be actually beneficial. 
+
+```{r PCA, include=TRUE}
+corMatrix <- abs(cor(my_train[, -54]))
+values <- length(corMatrix)/2
+sum<- sum(corMatrix > 0.8 )
+percent<- round(sum/values *100, 1)
+```
+Only `r percent`% of the variables seem to have a high correlation. This would not result in any significant decrease in variance for increased bias. Hence PCA will not be conducted.
+
+## Predictive Models
+
+### Decision Trees
+The Decision Tree machine learning algorithm is known to perform best within a non-linear setting. Additionally, the model is known to perform well within large data sets.
+```{r decision_trees, include=TRUE}
+set.seed(333)
+fit_rpart<- train(classe~., method = "rpart", data = my_train)
+pred_rpart<- predict(fit_rpart, my_test)
+conf_rpart<- confusionMatrix(pred_rpart, my_test$classe)
+conf_rpart
+```
+
+### Linear Discriminant Analysis (LDA) 
+The LDA method is a part of the Dimensionality Reduction machine learning algorithm. This method is often employed when the outcome of a dataset is dependent on a large number of predictors, as LDA helps maximise the separability between the different classes so as to make better predictions.
+```{r LDA, include=TRUE}
+set.seed(333)
+fit_lda<- train(classe~., method = "lda", data = my_train)
+pred_lda<- predict(fit_lda, my_test)
+conf_lda<- confusionMatrix(pred_lda, my_test$classe)
+conf_lda
+```
+
+### Random Forest  
+The Random Forest method is a subset of the Ensemble machine learning algorithm. The method constructs numerous decision trees and uses them to create a classification and predictions consecutively. 
+```{r random_forest, include=TRUE}
+set.seed(333)
+fit_rf<- randomForest(classe~., data = my_train)
+pred_rf<- predict(fit_rf, my_test)
+conf_rf<- confusionMatrix(pred_rf, my_test$classe)
+conf_rf
+```
+
+## Model Selection and Prediction 
+
+### Model Comparison 
+The table below draws together a comparison between the accuracies between the different prediction methods used.
+```{r accuracy, include=TRUE}
+a<- data.frame(Prediction_Method = c("Decision Trees","Linear Discriminant Analysis","Random Forest" ), Accuracy = c("49.0%","71.1%","99.8%"))
+knitr::kable(a)
+```
+
+From the table above it becomes evident that with an accuracy of about 99.8% the random forest method is the most effective predictive model.
+
+### Prediction 
+To predict the classes for the 20 cases in the testing data set the random forest method will be employed. 
+```{r testing, include=TRUE}
+predict(fit_rf,test)
+```
+
